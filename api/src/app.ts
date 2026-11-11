@@ -33,7 +33,7 @@ app.use("/api", fitnessRouter);
 app.use((_req, res) => res.status(404).json({ error: "Recurso não encontrado." }));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof ZodError) {
-    res.status(400).json({ error: "Dados inválidos.", details: error.issues });
+    res.status(400).json({ error: error.issues[0]?.message ?? "Dados inválidos.", details: error.issues });
     return;
   }
   if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {

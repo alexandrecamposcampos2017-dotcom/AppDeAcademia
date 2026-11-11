@@ -111,7 +111,7 @@ Recursos presentes na implementação:
 - atalho “Pular para o conteúdo principal”;
 - foco visível para controles e navegação por teclado;
 - rótulos e estados anunciados por leitores de tela em elementos interativos relevantes;
-- controles para ajustar o tamanho da interface entre 80% e 150%;
+- controles independentes para ajustar a escala da interface entre 80% e 200% (padrão de 120%) e o tamanho da fonte entre 80% e 200% (padrão de 100%);
 - opção de alto contraste, tema claro/escuro e suporte à preferência de movimento reduzido;
 - conteúdo e mensagens em português, com medidas apresentadas em unidades familiares.
 

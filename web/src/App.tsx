@@ -94,6 +94,8 @@ const navigation = [
   { id: "profile", label: "Meu perfil", icon: UserRound },
 ] as const;
 type PageId = typeof navigation[number]["id"];
+const DEFAULT_SITE_SCALE = 1.2;
+const DEFAULT_FONT_SCALE = 1;
 
 const activityLevels = [
   { value: "sedentary", label: "Sedentário", description: "Pouco ou nenhum exercício", multiplier: 1.2 },
@@ -217,13 +219,13 @@ async function resizeProfileImage(file: File): Promise<string> {
 }
 
 function Field({ label, name, type = "text", required = false, min, max, step, minLength, defaultValue, placeholder }: {
-  label: string; name: string; type?: string; required?: boolean; min?: number; max?: number;
+  label: string; name: string; type?: string; required?: boolean; min?: number | string; max?: number | string;
   step?: number; minLength?: number; defaultValue?: string | number; placeholder?: string;
 }) {
   const id = useId();
   const numeric = type === "number";
-  const rangeMin = min ?? 0;
-  const rangeMax = max ?? getRangeMaximum(label, rangeMin, defaultValue);
+  const rangeMin = typeof min === "number" ? min : 0;
+  const rangeMax = typeof max === "number" ? max : getRangeMaximum(label, rangeMin, defaultValue);
   const rangeStep = step ?? getRangeStep(label);
   const initialValue = Number(defaultValue ?? rangeMin);
   const [value, setValue] = useState(initialValue);
@@ -231,6 +233,7 @@ function Field({ label, name, type = "text", required = false, min, max, step, m
   const fieldRef = useRef<HTMLDivElement>(null);
   const digits = Math.min(3, (String(rangeStep).split(".")[1] ?? "").length);
   const displayedValue = value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: digits });
+  const rangeValueText = formatRangeValue(value, label, displayedValue);
 
   useEffect(() => {
     const form = fieldRef.current?.closest("form");
@@ -247,7 +250,7 @@ function Field({ label, name, type = "text", required = false, min, max, step, m
     return (
       <div className="field range-field" ref={fieldRef}>
         <label htmlFor={id}>{label}{required && <span className="required-marker"> (obrigatório)</span>}</label>
-        <output htmlFor={id} className="range-value">{enabled ? `${displayedValue}${rangeUnit(label)}` : "Não informado"}</output>
+        <output htmlFor={id} className="range-value">{enabled ? rangeValueText : "Não informado"}</output>
         <input
           className="range-input"
           id={id}
@@ -257,7 +260,7 @@ function Field({ label, name, type = "text", required = false, min, max, step, m
           step={rangeStep}
           value={value}
           disabled={!enabled}
-          aria-valuetext={enabled ? `${displayedValue}${rangeUnit(label)}` : "Não informado"}
+          aria-valuetext={enabled ? rangeValueText : "Não informado"}
           onChange={(event) => setValue(Number(event.currentTarget.value))}
         />
         {defaultValue === undefined && (
@@ -325,6 +328,32 @@ function rangeUnit(label: string) {
   return "";
 }
 
+function formatRangeValue(value: number, label: string, displayedValue: string) {
+  const normalizedLabel = label.toLocaleLowerCase("pt-BR");
+  const isSeconds = /descanso|seg\b|segundo/.test(normalizedLabel);
+  const isMinutes = /duração|min\b|minuto/.test(normalizedLabel);
+  if (!isSeconds && !isMinutes) return `${displayedValue}${rangeUnit(label)}`;
+
+  let amount = value;
+  let unit = isSeconds ? "segundo" : "minuto";
+  if (isSeconds && amount >= 3600) {
+    amount /= 3600;
+    unit = "hora";
+  } else if (isSeconds && amount >= 60) {
+    amount /= 60;
+    unit = "minuto";
+  } else if (isMinutes && amount >= 60) {
+    amount /= 60;
+    unit = "hora";
+  }
+
+  const formattedAmount = amount.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  return `${formattedAmount} ${unit}${amount === 1 ? "" : "s"}`;
+}
+
 function SelectField({ label, name, options, required = false, defaultValue }: {
   label: string; name: string; options: Array<[string, string]>; required?: boolean; defaultValue?: string;
 }) {
@@ -350,17 +379,17 @@ function ErrorBanner({ children }: { children: ReactNode }) {
   return <div className="error-banner" role="alert"><X size={16} /><span>{children}</span></div>;
 }
 
-function TextSizeControls({ scale, onChange, className = "" }: {
-  scale: number; onChange: (value: number) => void; className?: string;
+function ScaleControls({ scale, onChange, label, controlName, defaultScale, kind, className = "" }: {
+  scale: number; onChange: (value: number) => void; label: string; controlName: string;
+  defaultScale: number; kind: "site" | "font"; className?: string;
 }) {
-  const defaultScale = 1.1;
   const percent = Math.round(scale * 100);
   return (
-    <div className={`text-size-controls ${className}`} role="group" aria-label="Ajustar tamanho do texto">
-      <span className="text-size-label">Texto</span>
-      <button type="button" aria-label="Diminuir tamanho do texto" title="Diminuir tamanho do texto" disabled={scale <= 0.8} onClick={() => onChange(Math.max(0.8, Math.round((scale - 0.1) * 10) / 10))}>A−</button>
-      <button type="button" className="text-size-reset" aria-label={`Tamanho do texto em ${percent} por cento. Restaurar padrão de ${Math.round(defaultScale * 100)} por cento`} title={`Restaurar padrão de ${Math.round(defaultScale * 100)}%`} disabled={scale === defaultScale} onClick={() => onChange(defaultScale)}>{percent}%</button>
-      <button type="button" aria-label="Aumentar tamanho do texto" title="Aumentar tamanho do texto" disabled={scale >= 2} onClick={() => onChange(Math.min(2, Math.round((scale + 0.1) * 10) / 10))}>A+</button>
+    <div className={`scale-controls ${className}`} role="group" aria-label={`Ajustar ${controlName}`}>
+      <span className="scale-label">{label}</span>
+      <button type="button" aria-label={`Diminuir ${controlName}`} title={`Diminuir ${controlName}`} disabled={scale <= 0.8} onClick={() => onChange(Math.max(0.8, Math.round((scale - 0.1) * 10) / 10))}>{kind === "font" ? "A−" : "−"}</button>
+      <button type="button" className="scale-reset" aria-label={`${label} em ${percent} por cento. Restaurar padrão de ${Math.round(defaultScale * 100)} por cento`} title={`Restaurar padrão de ${Math.round(defaultScale * 100)}%`} disabled={scale === defaultScale} onClick={() => onChange(defaultScale)}>{percent}%</button>
+      <button type="button" aria-label={`Aumentar ${controlName}`} title={`Aumentar ${controlName}`} disabled={scale >= 2} onClick={() => onChange(Math.min(2, Math.round((scale + 0.1) * 10) / 10))}>{kind === "font" ? "A+" : "+"}</button>
     </div>
   );
 }
@@ -522,7 +551,7 @@ function Dashboard({ version, onNavigate }: { version: number; onNavigate: (page
           {report && (report.activities.length > 0 || report.workouts.length > 0) ? <>
             <div className="chart-wrap" aria-hidden="true"><ResponsiveContainer width="100%" height={225}>
             <AreaChart data={chartDays}><defs><linearGradient id="minutes" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3378ec" stopOpacity={0.25} /><stop offset="100%" stopColor="#3378ec" stopOpacity={0} /></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 5" vertical={false} stroke="var(--line)" /><XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted)" }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted)" }} width={30} /><Tooltip />
+              <CartesianGrid strokeDasharray="3 5" vertical={false} stroke="var(--line)" /><XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: "0.6875rem", fill: "var(--muted)" }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: "0.6875rem", fill: "var(--muted)" }} width={30} /><Tooltip />
               <Area type="monotone" dataKey="minutes" name="Minutos" stroke="#3378ec" strokeWidth={2.5} fill="url(#minutes)" />
             </AreaChart>
           </ResponsiveContainer></div>
@@ -777,7 +806,7 @@ function ActivitiesPage({ version, onSaved, notify }: { version: number; onSaved
           <Field label="Distância (km)" name="distanceKm" type="number" min={0} step={0.01} placeholder="Opcional" />
           <Field label="Calorias gastas" name="calories" type="number" min={0} max={10000} placeholder="Estimativa opcional" />
           <SelectField label="Intensidade" name="intensity" options={[["", "Não informada"], ["baixa", "Baixa"], ["moderada", "Moderada"], ["alta", "Alta"]]} />
-          <Field label="Data e hora" name="date" type="datetime-local" required defaultValue={dateTimeLocalNow()} />
+          <Field label="Data e hora" name="date" type="datetime-local" required defaultValue={dateTimeLocalNow()} max={dateTimeLocalNow()} />
           <Field label="Observações" name="notes" placeholder="Como você se sentiu?" />
           <div className="form-note">Calorias são opcionais: registre apenas se tiver uma estimativa confiável.</div>
           <SubmitButton>Salvar atividade</SubmitButton>
@@ -857,7 +886,7 @@ function ProgressPage({ version, onSaved, notify }: { version: number; onSaved: 
           </div> : <Empty>Registre uma medição para acompanhar sua evolução.</Empty>}
         </Panel>
         <Panel title="Evolução do peso">
-          {weightChart.length > 1 ? <ResponsiveContainer width="100%" height={180}><AreaChart data={weightChart}><defs><linearGradient id="weight" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#19a779" stopOpacity={0.2} /><stop offset="100%" stopColor="#19a779" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 5" vertical={false} stroke="var(--line)" /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted)" }} /><YAxis domain={["dataMin - 2", "dataMax + 2"]} tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "var(--muted)" }} /><Tooltip /><Area type="monotone" dataKey="weight" name="Peso (kg)" stroke="#19a779" fill="url(#weight)" /></AreaChart></ResponsiveContainer> : <Empty>Registre duas ou mais medições de peso para ver o gráfico.</Empty>}
+          {weightChart.length > 1 ? <ResponsiveContainer width="100%" height={180}><AreaChart data={weightChart}><defs><linearGradient id="weight" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#19a779" stopOpacity={0.2} /><stop offset="100%" stopColor="#19a779" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 5" vertical={false} stroke="var(--line)" /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: "0.625rem", fill: "var(--muted)" }} /><YAxis domain={["dataMin - 2", "dataMax + 2"]} tickLine={false} axisLine={false} tick={{ fontSize: "0.625rem", fill: "var(--muted)" }} /><Tooltip /><Area type="monotone" dataKey="weight" name="Peso (kg)" stroke="#19a779" fill="url(#weight)" /></AreaChart></ResponsiveContainer> : <Empty>Registre duas ou mais medições de peso para ver o gráfico.</Empty>}
         </Panel>
       </div>
     </div>
@@ -1271,7 +1300,7 @@ function ReportsPage({ version, notify }: { version: number; notify: (text: stri
       <div className="content-two-col">
         <Panel title="Atividade registrada" action={<span className="subtle-chip">{period === "week" ? "7 dias" : period === "year" ? "12 meses" : "30 dias"}</span>}>
           {activityChart.length ? <>
-            <div aria-hidden="true"><ResponsiveContainer width="100%" height={270}><AreaChart data={activityChart}><defs><linearGradient id="report" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3378ec" stopOpacity={0.2} /><stop offset="100%" stopColor="#3378ec" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 5" vertical={false} stroke="var(--line)" /><XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted)" }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted)" }} /><Tooltip /><Area type="monotone" dataKey="minutes" name="Minutos ativos" stroke="#3378ec" strokeWidth={2.5} fill="url(#report)" /></AreaChart></ResponsiveContainer></div>
+            <div aria-hidden="true"><ResponsiveContainer width="100%" height={270}><AreaChart data={activityChart}><defs><linearGradient id="report" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3378ec" stopOpacity={0.2} /><stop offset="100%" stopColor="#3378ec" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 5" vertical={false} stroke="var(--line)" /><XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: "0.6875rem", fill: "var(--muted)" }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: "0.6875rem", fill: "var(--muted)" }} /><Tooltip /><Area type="monotone" dataKey="minutes" name="Minutos ativos" stroke="#3378ec" strokeWidth={2.5} fill="url(#report)" /></AreaChart></ResponsiveContainer></div>
             <div className="visually-hidden">
               <p>Minutos ativos por dia no período selecionado:</p>
               <ul>{activityChart.map((entry) => <li key={entry.day}>{entry.day}: {entry.minutes} minutos</li>)}</ul>
@@ -1385,10 +1414,14 @@ function App() {
   const [version, setVersion] = useState(0);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
   const [highContrast, setHighContrast] = useState(() => localStorage.getItem("fittrack-high-contrast") === "true");
-  const [textScale, setTextScale] = useState(() => {
+  const [siteScale, setSiteScale] = useState(() => {
     const savedScale = Number(localStorage.getItem("fittrack-text-scale"));
-    if (!Number.isFinite(savedScale) || savedScale < 0.8 || savedScale > 2) return 1.1;
-    return savedScale === 1 ? 1.1 : savedScale;
+    if (!Number.isFinite(savedScale) || savedScale < 0.8 || savedScale > 2 || savedScale === 1 || savedScale === 1.1) return DEFAULT_SITE_SCALE;
+    return savedScale;
+  });
+  const [fontScale, setFontScale] = useState(() => {
+    const savedScale = Number(localStorage.getItem("fittrack-font-scale"));
+    return Number.isFinite(savedScale) && savedScale >= 0.8 && savedScale <= 2 ? savedScale : DEFAULT_FONT_SCALE;
   });
   const notify = useCallback((text: string, error = false) => {
     setToast({ text, error });
@@ -1408,9 +1441,13 @@ function App() {
     localStorage.setItem("fittrack-high-contrast", String(highContrast));
   }, [highContrast]);
   useEffect(() => {
-    document.documentElement.style.zoom = String(textScale);
-    localStorage.setItem("fittrack-text-scale", String(textScale));
-  }, [textScale]);
+    document.documentElement.style.zoom = String(siteScale);
+    localStorage.setItem("fittrack-text-scale", String(siteScale));
+  }, [siteScale]);
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${fontScale * 100}%`;
+    localStorage.setItem("fittrack-font-scale", String(fontScale));
+  }, [fontScale]);
   useEffect(() => {
     mainContentRef.current?.focus();
   }, [page, user]);
@@ -1426,7 +1463,8 @@ function App() {
   if (!user) return <>
     <a className="skip-link" href="#main-content">Pular para o conteúdo principal</a>
     <div className="auth-accessibility-tools" role="group" aria-label="Preferências de acessibilidade">
-      <TextSizeControls scale={textScale} onChange={setTextScale} />
+      <ScaleControls scale={siteScale} onChange={setSiteScale} label="Escala" controlName="escala do site" defaultScale={DEFAULT_SITE_SCALE} kind="site" />
+      <ScaleControls scale={fontScale} onChange={setFontScale} label="Fonte" controlName="tamanho da fonte" defaultScale={DEFAULT_FONT_SCALE} kind="font" />
       <label className="auth-contrast-toggle"><input type="checkbox" checked={highContrast} onChange={(event) => setHighContrast(event.target.checked)} /><span>Alto contraste</span></label>
     </div>
     <AuthScreen onLogin={setUser} onNotice={notify} />
@@ -1442,7 +1480,7 @@ function App() {
       <div className="sidebar-bottom"><div className="sidebar-tip"><div className="tip-icon"><Sparkles size={16} /></div><b>Consistência é progresso.</b><span>Um treino de cada vez, no seu ritmo.</span></div><button className="logout-button" onClick={() => void logout()}><LogOut size={17} /> Sair da conta</button></div>
     </aside>
     <main ref={mainContentRef} className="main-area" id="main-content" tabIndex={-1} aria-label={active?.label ?? "Conteúdo principal"}>
-      <header className="topbar"><div className="breadcrumb"><span>FitTrack</span><span aria-hidden="true">/</span><b>{active?.label}</b></div><div className="topbar-actions"><div className="today-date"><CalendarDays aria-hidden="true" size={15} /> {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</div><TextSizeControls scale={textScale} onChange={setTextScale} /><div className="topbar-divider" /><button className="profile-chip" onClick={() => setPage("profile")}><span className="avatar-small">{user.profile?.avatarData ? <img src={user.profile.avatarData} alt="" /> : user.name.slice(0, 1).toUpperCase()}</span><span><b>{user.name}</b><small>Meu perfil</small></span><ChevronDown aria-hidden="true" size={15} /></button></div></header>
+      <header className="topbar"><div className="breadcrumb"><span>FitTrack</span><span aria-hidden="true">/</span><b>{active?.label}</b></div><div className="topbar-actions"><div className="today-date"><CalendarDays aria-hidden="true" size={15} /> {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</div><ScaleControls scale={siteScale} onChange={setSiteScale} label="Escala" controlName="escala do site" defaultScale={DEFAULT_SITE_SCALE} kind="site" /><ScaleControls scale={fontScale} onChange={setFontScale} label="Fonte" controlName="tamanho da fonte" defaultScale={DEFAULT_FONT_SCALE} kind="font" /><div className="topbar-divider" /><button className="profile-chip" onClick={() => setPage("profile")}><span className="avatar-small">{user.profile?.avatarData ? <img src={user.profile.avatarData} alt="" /> : user.name.slice(0, 1).toUpperCase()}</span><span><b>{user.name}</b><small>Meu perfil</small></span><ChevronDown aria-hidden="true" size={15} /></button></div></header>
       <div className="page-container">
         {page === "dashboard" && <Dashboard version={version} onNavigate={setPage} />}
         {page === "workouts" && <WorkoutsPage version={version} onSaved={refresh} notify={notify} />}

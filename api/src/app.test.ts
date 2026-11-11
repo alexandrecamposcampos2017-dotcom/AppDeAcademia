@@ -57,6 +57,14 @@ test("authenticates users, persists fitness data, validates input and isolates a
   });
   assert.equal(invalidActivity.status, 400);
 
+  const futureActivity = await firstUser.post("/api/activities").send({
+    type: "Corrida",
+    durationMinutes: 200,
+    date: new Date(Date.now() + 60_000).toISOString(),
+  });
+  assert.equal(futureActivity.status, 400);
+  assert.equal(futureActivity.body.error, "A data não pode estar no futuro.");
+
   const activityResponse = await firstUser.post("/api/activities").send({
     type: "Caminhada",
     durationMinutes: 35,
